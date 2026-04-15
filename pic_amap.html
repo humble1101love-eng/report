@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>高德 × 千问 打车 Agent 交互流程</title>
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --bg-card: #151b2b;
+      --text-main: #ffffff;
+      --text-sub: #94a3b8;
+      --step-bg: #1e293b;
+      --step-active: #2563eb;
+      --qwen-color: #3b82f6;
+      --gaode-color: #f97316;
+      --joint-color: linear-gradient(135deg, #3b82f6 0%, #f97316 100%);
+      --border-radius: 8px;
+      --phone-ratio: 9 / 19.5;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-dark);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      padding: 40px 20px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* 顶部图例 */
+    .legend {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 24px;
+      font-size: 14px;
+      color: var(--text-sub);
+    }
+    .legend span { display: flex; align-items: center; gap: 8px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .dot.joint { background: var(--joint-color); }
+    .dot.qwen { background: var(--qwen-color); }
+    .dot.gaode { background: var(--gaode-color); }
+
+    /* 时间轴容器 (支持横向滚动) */
+    .timeline-wrapper {
+      overflow-x: auto;
+      padding-bottom: 20px;
+      scrollbar-width: thin;
+      scrollbar-color: #334155 #151b2b;
+    }
+    .timeline-wrapper::-webkit-scrollbar { height: 6px; }
+    .timeline-wrapper::-webkit-scrollbar-track { background: var(--bg-card); border-radius: 3px; }
+    .timeline-wrapper::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    .timeline-track {
+      display: flex;
+      min-width: 1200px; /* 保证不挤压 */
+      gap: 16px;
+    }
+
+    /* 步骤列 */
+    .step-col {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* Step 标题块 */
+    .step-header {
+      background: var(--step-bg);
+      padding: 12px 16px;
+      border-radius: var(--border-radius);
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      position: relative;
+      border: 1px solid #334155;
+    }
+    .step-header::after {
+      content: "›";
+      position: absolute;
+      right: -14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #475569;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .step-col:last-child .step-header::after { display: none; }
+
+    /* 子任务标签行 */
+    .task-tags {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tag {
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .tag.joint { background: var(--joint-color); color: #fff; }
+    .tag.qwen { background: rgba(59, 130, 246, 0.15); color: var(--qwen-color); border: 1px solid rgba(59, 130, 246, 0.3); }
+    .tag.gaode { background: rgba(249, 115, 22, 0.15); color: var(--gaode-color); border: 1px solid rgba(249, 115, 22, 0.3); }
+
+    /* 截图占位区 */
+    .screenshots {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .phone-frame {
+      width: 160px;
+      aspect-ratio: var(--phone-ratio);
+      background: #1e293b;
+      border: 2px dashed #334155;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+      font-size: 12px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .phone-frame:hover {
+      border-color: #64748b;
+      background: #252f45;
+    }
+    .phone-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none; /* 替换图片后改为 display: block */
+    }
+    .phone-frame.has-img img { display: block; }
+    .phone-frame.has-img .placeholder-text { display: none; }
+
+    /* 底部说明 */
+    .footer-note {
+      margin-top: 30px;
+      text-align: center;
+      color: var(--text-sub);
+      font-size: 13px;
+      border-top: 1px solid #1e293b;
+      padding-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- 图例 -->
+    <div class="legend">
+      <span><span class="dot joint"></span> 千问&高德打车</span>
+      <span><span class="dot qwen"></span> 千问侧 (LUI/卡片/记忆)</span>
+      <span><span class="dot gaode"></span> 高德侧 (运力/调度/交易)</span>
+    </div>
+
+    <!-- 时间轴主体 -->
+    <div class="timeline-wrapper">
+      <div class="timeline-track">
+        
+        <!-- Step 1 -->
+        <div class="step-col">
+          <div class="step-header">Step1 语音唤醒与意图识别</div>
+          <div class="task-tags">
+            <div class="tag qwen">自然语言指令输入</div>
+            <div class="tag joint">意图解析 & 槽位填充</div>
+          </div>
+          <div class="screenshots">
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">📱 替换：语音/文字指令页</span>
+              <img src="LUI交互.jpg" alt="指令输入">
+            </div>
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">🤖 替换：意图识别加载页</span>
+              <img src="意图识别加载页.jpg" alt="意图识别">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="step-col">
+          <div class="step-header">Step2 方案推荐与决策</div>
+          <div class="task-tags">
+            <div class="tag gaode">实时路线规划 & 估价</div>
+            <div class="tag gaode">多车型/比价推荐卡片</div>
+            <div class="tag joint">偏好记忆匹配 (地址/品牌)</div>
+          </div>
+          <div class="screenshots">
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">🗺️ 替换：路线规划页</span>
+              <img src="路线规划页.jpg" alt="路线规划">
+            </div>
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">🎴 替换：车型推荐卡片</span>
+              <img src="车型推荐.jpg" alt="车型推荐">
+            </div>
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">💡 替换：偏好推荐提示</span>
+              <img src="偏好识别.jpg" alt="偏好推荐">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="step-col">
+          <div class="step-header">Step3 确认下单与派单</div>
+          <div class="task-tags">
+            <div class="tag gaode">动态卡片确认 & 信息补全</div>
+            <div class="tag joint">一键下单 / 聚合调度</div>
+          </div>
+          <div class="screenshots">
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">✅ 替换：卡片确认页</span>
+              <img src="下单成功.jpg" alt="卡片确认">
+            </div>
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">🚖 替换：司机接单响应页</span>
+              <img src="司机接单.jpg" alt="司机接单">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="step-col">
+          <div class="step-header">Step4 行中服务与协同</div>
+          <div class="task-tags">
+            <div class="tag gaode">实时轨迹 & 预计到达</div>
+            <div class="tag joint">行中改派 / 取消 / 安全守护</div>
+          </div>
+          <div class="screenshots">
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">📍 替换：实时行程轨迹页</span>
+              <img src="路线图面.jpg" alt="实时行程">
+            </div>
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">🔄 替换：行中改派操作页</span>
+              <img src="行中修改.jpg" alt="行中改派">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="step-col">
+          <div class="step-header">Step5 支付结算与售后</div>
+          <div class="task-tags">
+            <div class="tag joint">AI付免密支付 & 行程单</div>
+            <div class="tag gaode">电子发票 / 客服闭环</div>
+          </div>
+          <div class="screenshots">
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">💳 替换：支付成功页</span>
+              <img src="订单支付.jpg" alt="支付成功">
+            </div>
+            <div class="phone-frame has-img">
+              <span class="placeholder-text">🧾 替换：发票/售后卡片</span>
+              <img src="发票.jpg" alt="发票/售后">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    
+  </div>
+
+  <script>
+    // 简易脚本：点击占位框可模拟替换图片（仅演示用，实际请手动替换 src）
+    document.querySelectorAll('.phone-frame').forEach(frame => {
+      frame.addEventListener('click', function() {
+        if(!this.classList.contains('has-img')) {
+          alert('在实际使用时，请将 HTML 中的 <!-- <img src="..."> --> 取消注释并填入真实图片路径，\n然后给该 div 添加 class="has-img" 即可完美渲染。');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

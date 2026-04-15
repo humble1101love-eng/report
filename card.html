@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高德-千问卡片数据流转总结</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --border-color: #334155;
+            --code-bg: #0f172a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            line-height: 1.6;
+            padding: 40px 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        /* Header Styles */
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        /* Timeline / Flow Styles */
+        .flow-container {
+            position: relative;
+            padding-left: 20px;
+        }
+
+        /* The vertical line */
+        .flow-container::before {
+            content: '';
+            position: absolute;
+            left: 35px; /* Adjust based on icon size */
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, var(--accent-blue), var(--accent-purple), var(--accent-green));
+            opacity: 0.3;
+            z-index: 0;
+        }
+
+        .step-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            position: relative;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            z-index: 1;
+        }
+
+        .step-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            border-color: var(--accent-blue);
+        }
+
+        /* Icon Circle */
+        .step-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Step Colors */
+        .step-1 .step-icon { background: linear-gradient(135deg, #3b82f6, #2563eb); } /* Blue */
+        .step-2 .step-icon { background: linear-gradient(135deg, #8b5cf6, #7c3aed); } /* Purple */
+        .step-3 .step-icon { background: linear-gradient(135deg, #ec4899, #db2777); } /* Pink */
+        .step-4 .step-icon { background: linear-gradient(135deg, #f59e0b, #d97706); } /* Orange */
+        .step-5 .step-icon { background: linear-gradient(135deg, #10b981, #059669); } /* Green */
+        .step-6 .step-icon { background: linear-gradient(135deg, #06b6d4, #0891b2); } /* Cyan */
+        .step-7 .step-icon { background: linear-gradient(135deg, #6366f1, #4f46e5); } /* Indigo */
+
+        /* Content Area */
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .step-desc {
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+        }
+
+        /* Code Snippet Style */
+        .tech-stack {
+            display: inline-block;
+            background-color: var(--code-bg);
+            color: #e2e8f0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 0.85rem;
+            border: 1px solid #334155;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+
+        .tech-stack.highlight {
+            color: #60a5fa;
+            border-color: #1e40af;
+            background-color: #172554;
+        }
+
+        /* Tags */
+        .tag {
+            font-size: 0.75rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.1);
+            color: #cbd5e1;
+            margin-left: auto;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .flow-container::before {
+                left: 20px;
+            }
+            .step-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 1rem;
+            }
+            .step-card {
+                padding: 16px;
+                gap: 15px;
+            }
+            h1 { font-size: 1.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>高德-千问卡片数据流转总结</h1>
+        <div class="subtitle">Amap & Qwen Card Data Flow Architecture</div>
+    </header>
+
+    <div class="flow-container">
+
+        <!-- Step 1 -->
+        <div class="step-card step-1">
+            <div class="step-icon">1</div>
+            <div class="step-content">
+                <div class="step-title">
+                    请求入口 (Request Entry)
+                    <span class="tag">Gateway</span>
+                </div>
+                <div class="step-desc">
+                    接收来自千问大模型的 MCP (Model Context Protocol) 请求，作为流量网关进行初步校验与分发。
+                </div>
+                <div>
+                    <span class="tech-stack highlight">McpApiController</span>
+                    <span class="tech-stack">Route Dispatch</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="step-card step-2">
+            <div class="step-icon">2</div>
+            <div class="step-content">
+                <div class="step-title">
+                    业务逻辑处理 (Business Logic)
+                    <span class="tag">Core Service</span>
+                </div>
+                <div class="step-desc">
+                    执行核心业务规则，查询订单状态或POI信息，组装基础业务对象。
+                </div>
+                <div>
+                    <span class="tech-stack highlight">BizService</span>
+                    <span class="tech-stack highlight">FlowHandler</span>
+                    <span class="tech-stack">Returns: FlowHandlerBO</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="step-card step-3">
+            <div class="step-icon">3</div>
+            <div class="step-content">
+                <div class="step-title">
+                    卡片构建 (Card Rendering)
+                    <span class="tag">Template Engine</span>
+                </div>
+                <div class="step-desc">
+                    将通用的业务 BO 转换为前端可渲染的卡片数据结构，适配千问卡片协议规范。
+                </div>
+                <div>
+                    <span class="tech-stack highlight">CardRender</span>
+                    <span class="tech-stack highlight">OrderCardService</span>
+                    <span class="tech-stack">Output: CardDataWrapper</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="step-card step-4">
+            <div class="step-icon">4</div>
+            <div class="step-content">
+                <div class="step-title">
+                    持久化存储 (Persistence)
+                    <span class="tag">Database</span>
+                </div>
+                <div class="step-desc">
+                    将生成的卡片快照存入数据库，建立 cardId 与业务订单的映射关系，支持后续追溯与更新。
+                </div>
+                <div>
+                    <span class="tech-stack highlight">QwenCardService</span>
+                    <span class="tech-stack highlight">QwenCardDomainService</span>
+                    <span class="tech-stack">Action: Save & Generate ID</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 5 -->
+        <div class="step-card step-5">
+            <div class="step-icon">5</div>
+            <div class="step-content">
+                <div class="step-title">
+                    消息推送 (Push Notification)
+                    <span class="tag">RPC / HSF</span>
+                </div>
+                <div class="step-desc">
+                    通过异步消费者或同步接口，将构建好的卡片数据推送到千问服务端。
+                </div>
+                <div>
+                    <span class="tech-stack highlight">ChatRecordServiceConsumer</span>
+                    <span class="tech-stack">Protocol: HSF Interface</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 6 -->
+        <div class="step-card step-6">
+            <div class="step-icon">6</div>
+            <div class="step-content">
+                <div class="step-title">
+                    终端渲染 (Client Rendering)
+                    <span class="tag">UI Layer</span>
+                </div>
+                <div class="step-desc">
+                    千问客户端接收 JSON 数据，根据模板 ID 解析并渲染出可视化的交互式卡片。
+                </div>
+                <div>
+                    <span class="tech-stack">Qwen Client</span>
+                    <span class="tech-stack">JSON to UI</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 7 -->
+        <div class="step-card step-7">
+            <div class="step-icon">7</div>
+            <div class="step-content">
+                <div class="step-title">
+                    动态更新 (Dynamic Update)
+                    <span class="tag">Event Driven</span>
+                </div>
+                <div class="step-desc">
+                    监听订单状态变更事件（如：已接单、送达），触发卡片局部刷新或全量替换，保持信息实时性。
+                </div>
+                <div>
+                    <span class="tech-stack highlight">Status Change Trigger</span>
+                    <span class="tech-stack">Re-render & Push</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <footer>
+        Generated for Technical Documentation | Internal Use Only
+    </footer>
+</div>
+
+</body>
+</html>
